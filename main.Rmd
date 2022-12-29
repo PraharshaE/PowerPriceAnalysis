@@ -1,0 +1,133 @@
+---
+title: "main"
+author: "Praharsha Enagandula"
+date: '2022-12-29'
+output: html_document
+---
+```{r}
+##install.packages("lubridate")
+library(tidyverse)
+library(data.table)
+library(dplyr)
+library(magrittr)
+library(ggplot2)
+
+```
+
+## Task 1
+
+Reading the files from the folder specified in the git folder and binding the rows of all the files since the order of columns in all the files is same. Here, I am naming the final dataframe to orig_df
+
+```{r task1}
+file_names <- list.files(path = "historicalPriceData", pattern = "*.csv", full.names = TRUE) 
+orig_df <- do.call(rbind, lapply(file_names, fread))
+orig_df
+```
+
+## Task 2
+
+I am extracting Year and Month from Date column of orig_df using mutate function with lubridate library, then grouping by settlement point, year, month to show the average price computed using mean()
+
+
+```{r task2}
+average_settlementpoint_prices <- orig_df %>%
+                                  mutate(Year = lubridate::year(Date), Month = lubridate::month(Date)) %>%
+                                  group_by(SettlementPoint, Year, Month) %>%
+                                  summarize(AveragePrice = mean(Price))
+
+average_settlementpoint_prices
+  
+```
+
+##Task 3
+
+I am creating a directory called "outputs" which I'll be using to write the resultant csv files into
+
+```{r}
+dir.create("Outputs")
+write.csv(average_settlementpoint_prices, "Outputs/AveragePriceByMonth.csv", row.names=FALSE)
+```
+
+## Task 4
+
+Here, I am filtering the settlement point to eliminate Load Zones by using grepl function, then extracting the hourly volatility of price  in Hubs by year settlement point
+```{r}
+hourly_prices <- orig_df %>%
+  filter(!grepl('^LZ_*', SettlementPoint)) %>%
+                  mutate(Year = lubridate::year(Date)) %>%
+                    group_by(Year, SettlementPoint) %>%
+                      summarize(HourlyVolatility = sd(log(Price)))
+                       
+
+
+hourly_prices
+```
+
+## Task 5
+
+writing the file in .csv format to outputs folder
+```{r}
+write.csv(hourly_prices, "Outputs/HourlyVolatilityByYear.csv", row.names=FALSE)
+```
+
+## Task 6
+I am calculating the hub that had the highest volatility for each year
+```{r}
+max_volatility <- hourly_prices %>%
+                    group_by(Year) %>%
+                      slice_max(HourlyVolatility, n = 1)
+                        
+
+max_volatility
+
+```
+
+## Task 6
+
+writing the file to outputs folder 
+```{r}
+write.csv(max_volatility, "Outputs/MaxVolatilityByYear.csv", row.names=FALSE)
+```
+
+
+## Task 7
+
+Ran out of time but describing the steps I would follow to finish this in pseudo code
+
+```{r}
+##1. Ensuring that the date column is in expected datetime format which is mm/dd/yyyy hh:mm:ss
+##2. Split theColumn "Date" into individual "Date" and "Hour of the day" columns
+##3. Pivot/Unpivot the Hour column into Rows and assign rowheaders x1:x24 so the dataframe now has the columns Settlement point, Date,X1:X24
+##3. Split the data frame into multiple data frames on the unique values present in SettlementPoint Column and write each dataframe to separate csv files named according to the format "spot_<SettlementPoint>" in the subdirectory "formattedSpotHistory"
+
+
+
+df <- orig_df
+df$Date <- as.Date(orig_df$Date)
+df <- orig_df %>%  mutate_at(vars(SettlementPoint),as.factor)
+df_split <- split(df, df$SettlementPoint) 
+##lapply(df_dat, function(x) write.csv(x, paste0('df_', x$SettlementPoint[1], '.csv'), row.names = FALSE))
+```
+
+
+## Bonus - Mean Plots
+
+Using the avg_monthly_prices that now has a custom date field, I created line plot that show prices at hubs and load zones by month and saved them to a .png file in Outputs folder
+
+```{r}
+avg_monthly_prices <- average_settlementpoint_prices %>% mutate(Date = lubridate::make_date(year = Year, month = Month, day = 1))
+avg_hub_price <- avg_monthly_prices %>% filter(!grepl('^LZ_*', SettlementPoint))
+avg_lz_price <- avg_monthly_prices %>% filter(!grepl('^HB_*', SettlementPoint))
+ggplot(avg_hub_price, aes(Date, AveragePrice, color = SettlementPoint)) + geom_line() + xlab("Date") + ylab("Average Price")
+ggplot(avg_lz_price, aes(Date, AveragePrice, color = SettlementPoint)) + geom_line() + xlab("Date") + ylab("Average Price")
+ggsave("Outputs/SettlementHubAveragePriceByMonth.png", avg_hub_price)
+ggsave("Outputs/LoadZoneAveragePriceByMonth.png", avg_lz_price)
+```
+
+
+
+
+
+
+
+
